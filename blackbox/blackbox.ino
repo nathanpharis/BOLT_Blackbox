@@ -1,6 +1,6 @@
 //============================================================================================================================================
 //MURI SPS Blackbox 
-//Calculation of Optically Measured Particles with an Automated SPS System (COMPASS)
+//Calculator of Optically Measured Particles with an Autonomous SPS System (COMPASS)
 //Written by Nathan Pharis - phari009 Spring 2020
 //============================================================================================================================================
 //
@@ -46,6 +46,7 @@
 #include <SFE_MicroOLED.h>                                              //Library for OLED
 #include <Adafruit_MAX31856.h>                                          //Adafruit Library
 #include <LatchRelay.h>                                                 //Heater relay
+#include <Wire.h>                                                       //I2C library if the I2C mode in SPS is disabled
 
 ////////////////////////////////////
 //////////Pin Definitions///////////
@@ -101,7 +102,10 @@ static boolean FlightlogOpen = false;                                   //SD for
 const int chipSelect = BUILTIN_SDCARD; 
 
 //Data Transfer
-
+#define BEGIN 0x42
+#define STOP  0x53
+#define SYSTEM_ID 0x01
+uint16_t packetNum = 0;
 
 ////////////////////////////////
 //////////Power Relays//////////
@@ -128,7 +132,6 @@ float PressureATM;                                                     //ATM cal
 //GPS
 UbloxGPS GPS(&UBLOX_SERIAL);
 uint8_t FixStatus= NoFix;
-
 
 ////////////////////////
 //////////OPCs//////////
@@ -179,6 +182,7 @@ void loop() {
       logCounter = millis();
       
       updateSensors();                                                   //Updates and logs all sensor data
+      sendDataPacket();                                                  //Output the data packet
       actHeat();                                                         //Controls active heating
       oledUpdate();                                                      //Update screen
   }   
