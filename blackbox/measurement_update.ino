@@ -39,11 +39,16 @@ void updateSensors() {
   data += (String(PressurePSI,6) + "," + String(PressureATM,6) + ",");
   data += (sensorHeat_Status + ",");
   data += (",=," + OPCdata);
-  openFlightlog();
-  delay(100);
   
-  Flog.println(data);
-  closeFlightlog();
+  openFlightlogA();
+  delay(100); 
+  FlogA.println(data);
+  closeFlightlogA();
+
+  openFlightlogB();
+  delay(100); 
+  FlogB.println(data);
+  closeFlightlogB();
 
   printData();
 }

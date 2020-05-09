@@ -18,22 +18,23 @@
 //=============================================================================================================================================
 
 /*  Teensy 3.5/3.6 pin connections:
-     ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     ------------------------------------------------------------------------------------------------------------------------------------------
      Component                    | Pins used         
 
      UBlox Neo m8n                | UART 1 (0,1)          
-     SPS30 A                      | UART 2 (9,10)
+     SPS30 A                      | UART 4 (31,32)
      SPS30 B                      | UART 3 (7,8)
      Data Stream                  | UART 5 (33,34)
      Thermocouple A               | SPI 0 (11,12,13,15)
      Thermocouple B               | SPI 0 (11,12,13,20)
+     SD A                         | SPI 0 (11,12,13,9)
+     SD B                         | SPI 0 (11,12,13,10)
      Pressure sensor              | A9 (23)
-     SD Logging                   | SPI 1 (5,20,31,32)
      OLED                         | I2C 0 (18,19)
      OPC Heater                   | (35,36)
 
      
-     ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     -------------------------------------------------------------------------------------------------------------------------------------------
 */
 /////////////////////////////
 //////////Libraries//////////
@@ -57,9 +58,10 @@
 #define HONEYWELL_PRESSURE A9                                           //Analog Honeywell Pressure Sensor
 #define THERMOCOUPLE_A 15                                               //Chip Select pin for SPI for the thermocouples
 #define THERMOCOUPLE_B 20
-#define SD_B 32                                                         //Chip select pin for SD B
+#define SD_A 9
+#define SD_B 10
 #define UBLOX_SERIAL Serial1                                            //Serial Pins
-#define SPSA_SERIAL Serial2
+#define SPSA_SERIAL Serial4
 #define SPSB_SERIAL Serial3                                           
 #define DATA_SERIAL Serial5                                         
 #define PIN_RESET 17                                                    //The library assumes a reset pin is necessary. The Qwiic OLED has RST hard-wired, so pick an arbitrarty IO pin that is not being used
@@ -88,18 +90,56 @@
 #define LOG_RATE 1000
 #define SCREEN_UPDATE_RATE 2000
 
+////////////////////////
+//////////Data//////////
+////////////////////////
+struct gpsData{
+  uint16_t hours,minutes,seconds;
+  uint8_t dd, mm, yyyy;
+  unsigned int fixAge;
+  uint8_t sats;
+  float latitude, longitude, alt;
+}locationData;
+
+struct spsData_abv{
+  uint16_t hits;
+  float numberCount[5];
+}spsA_data_abv,spsB_data_abv;
+
+struct systemData{
+  unsigned long flightTime;
+  gpsData locationData;
+  float t1 = -127.00, t2 = -127.00;
+  float pressure;
+  spsData_abv spsA_data_abv,spsB_data_abv;
+  bool sensorHeatStatus;
+}compassData;
+
 ///////////////////////////////////
 //////////Data Management//////////
 ///////////////////////////////////
 //Data Log
 unsigned long logCounter = 0;
-File Flog;                                                             //Variables needed to establish the flight log
-static String data;
-String Fname = "";
-boolean SDcard = true;
+String data;
 
-static boolean FlightlogOpen = false;                                   //SD for Flight Computer
-const int chipSelect = BUILTIN_SDCARD; 
+SDClass sdA;
+File FlogA;                                                             //Variables needed to establish the flight log
+String FnameA = "";
+boolean SDcardA = true;
+static boolean FlightlogOpenA = false;                                   //SD for Flight Computer
+
+SDClass sdB;
+File FlogB;                                                             //Variables needed to establish the flight log
+String FnameB = "";
+boolean SDcardB = true;
+static boolean FlightlogOpenB = false;                                   //SD for Flight Computer
+
+//File Flog;                                                             //Variables needed to establish the flight log
+//static String data;
+//String Fname = "";
+//boolean SDcard = true;
+//static boolean FlightlogOpen = false;                                   //SD for Flight Computer
+//const int chipSelect = BUILTIN_SDCARD; 
 
 //Data Transfer
 #define BEGIN 0x42
@@ -107,21 +147,19 @@ const int chipSelect = BUILTIN_SDCARD;
 #define SYSTEM_ID 0x01
 uint16_t packetNum = 0;
 
-////////////////////////////////
-//////////Power Relays//////////
-////////////////////////////////
-LatchRelay sensorHeatRelay(SENSOR_HEATER_ON,SENSOR_HEATER_OFF);        //Declare latching relay objects and related logging variables
-String sensorHeat_Status = "";
-
 ////////////////////////////////////////////////
 //////////Environment Sensor Variables//////////
 ////////////////////////////////////////////////
-//Thermocouple Temp Sensors
+//Thermocouple Temp Sensors and Thermal Control
 Adafruit_MAX31856 thermocoupleA = Adafruit_MAX31856(THERMOCOUPLE_A);
 Adafruit_MAX31856 thermocoupleB = Adafruit_MAX31856(THERMOCOUPLE_B);
+
 float t1 = -127.00;                                                    //Temperature values
 float t2 = -127.00;
 bool coldSensor = false;
+
+LatchRelay sensorHeatRelay(SENSOR_HEATER_ON,SENSOR_HEATER_OFF);        //Declare latching relay objects and related logging variables
+String sensorHeat_Status = "";
 
 //Honeywell Pressure Sensor
 float pressureSensor;                                                  //Analog number given by sensor
@@ -151,7 +189,8 @@ unsigned long screenUpdateTimer = 0;
 
 void setup() {
   analogReadResolution(13);
-
+  SPI.begin();
+  
   initOLED(oled);                                                      //Initialize OLED Screen
   
   initData();                                                          //Initialize SD
